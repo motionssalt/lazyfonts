@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Font Extractor Pro - Extract Fonts from ZIP Files</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">
+                    <i class="fas fa-font"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>Font Extractor Pro</h1>
+                    <p>Extract & repackage fonts from ZIP archives</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Upload Section -->
+            <section class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <h2>Drop ZIP files here</h2>
+                    <p>or click to browse</p>
+                    <div class="supported-formats">
+                        <span><i class="fas fa-file-archive"></i> ZIP files supported</span>
+                        <span><i class="fas fa-folder-tree"></i> Nested ZIPs & folders</span>
+                    </div>
+                    <input type="file" id="fileInput" multiple accept=".zip" hidden>
+                </div>
+                <div class="upload-info">
+                    <div class="info-card">
+                        <i class="fas fa-check-circle"></i>
+                        <span>TTF, OTF, WOFF, WOFF2, EOT, SVG</span>
+                    </div>
+                    <div class="info-card">
+                        <i class="fas fa-shield-alt"></i>
+                        <span>100% Client-side Processing</span>
+                    </div>
+                    <div class="info-card">
+                        <i class="fas fa-bolt"></i>
+                        <span>No Upload Required</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Processing Section -->
+            <section class="processing-section" id="processingSection">
+                <h2><i class="fas fa-cogs"></i> Processing</h2>
+                <div class="processing-list" id="processingList">
+                    <!-- Processing items will be added here -->
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section" id="resultsSection">
+                <div class="results-header">
+                    <h2><i class="fas fa-download"></i> Extracted Fonts</h2>
+                    <button class="btn btn-primary btn-download-all" id="downloadAllBtn">
+                        <i class="fas fa-file-archive"></i> Download All
+                    </button>
+                </div>
+                <div class="results-list" id="resultsList">
+                    <!-- Results will be added here -->
+                </div>
+            </section>
+
+            <!-- Empty State -->
+            <section class="empty-state" id="emptyState">
+                <div class="empty-icon">
+                    <i class="fas fa-box-open"></i>
+                </div>
+                <h3>No fonts extracted yet</h3>
+                <p>Upload ZIP files to extract and repackage fonts</p>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Font Extractor Pro &copy; 2024 | All processing happens locally in your browser</p>
+        </footer>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
