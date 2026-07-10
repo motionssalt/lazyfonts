@@ -23,7 +23,7 @@ compatibility_flags = ["nodejs_compat"]
 # (variable name: LAZYFONTS_KV) and delete this block entirely.
 [[kv_namespaces]]
 binding = "LAZYFONTS_KV"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "cac79a1aef9f438bb3271d17d8bc0ae6"
 
 # ─── Secrets (do NOT commit real values) ─────────────────────────────────────
 # Configure these in the dashboard under
