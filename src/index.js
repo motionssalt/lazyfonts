@@ -56,6 +56,111 @@ const TG_FILE = (token, path) =>
   `https://api.telegram.org/file/bot${token}/${path}`;
 
 // -----------------------------------------------------------------------------
+// Channel-follow gate — @motionsalt subscription check
+// -----------------------------------------------------------------------------
+//
+// Every incoming update is routed through checkMembership() first; only
+// users whose status in @motionsalt is `member`, `administrator`, or
+// `creator` are allowed through to the normal handlers. Anything else
+// (including `left`, `kicked`, or ANY error response from Telegram) is
+// treated as "not a member" — fail closed, never fail open.
+//
+// IMPORTANT: getChatMember requires the bot to be an *admin* in the
+// target chat. This bot has already been made an admin of @motionsalt.
+// If it is ever removed as admin (or demoted), this call will silently
+// start returning errors and the gate will lock EVERYONE out — the bot
+// must remain an admin of @motionsalt for this feature to work.
+//
+// Verified users are cached in LAZYFONTS_KV under `membership:<user_id>`
+// with a 1-hour TTL, so repeat messages from an already-verified user
+// don't hammer the Telegram API but the check still re-validates
+// periodically in case the user leaves the channel later.
+
+const CHANNEL_URL = "https://t.me/motionsalt";
+const CHANNEL_USERNAME = "@motionsalt";
+const MEMBERSHIP_CACHE_TTL = 60 * 60; // 1 hour
+
+async function isChannelMember(env, userId) {
+  try {
+    const url =
+      `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getChatMember` +
+      `?chat_id=${encodeURIComponent(CHANNEL_USERNAME)}&user_id=${userId}`;
+    const res = await fetch(url);
+    if (!res.ok) return false;
+    const json = await res.json();
+    if (!json.ok || !json.result) return false;
+    const status = json.result.status;
+    return (
+      status === "member" ||
+      status === "administrator" ||
+      status === "creator"
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function checkMembership(env, userId) {
+  if (!userId) return false;
+  const key = `membership:${userId}`;
+  // Cache is best-effort — if KV read fails for any reason, do a live check
+  // rather than crashing the gate.
+  try {
+    const cached = await env.LAZYFONTS_KV.get(key);
+    if (cached === "verified") return true;
+  } catch {
+    /* treat as cache miss */
+  }
+  const ok = await isChannelMember(env, userId);
+  if (ok) {
+    try {
+      await env.LAZYFONTS_KV.put(key, "verified", {
+        expirationTtl: MEMBERSHIP_CACHE_TTL,
+      });
+    } catch {
+      /* cache write failure is non-fatal */
+    }
+  }
+  return ok;
+}
+
+async function sendGateMessage(env, chatId) {
+  return sendMessage(
+    env,
+    chatId,
+    "🔒 *Join @motionsalt first* to use this bot.\n\nOnce you've joined, tap the button below to continue.",
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "📢 Join @motionsalt", url: CHANNEL_URL }],
+          [
+            {
+              text: "✅ I've Joined — Check Again",
+              callback_data: "check_membership",
+            },
+          ],
+        ],
+      },
+    }
+  );
+}
+
+function extractUserId(update) {
+  if (update.callback_query?.from?.id) return update.callback_query.from.id;
+  if (update.message?.from?.id) return update.message.from.id;
+  if (update.edited_message?.from?.id) return update.edited_message.from.id;
+  return null;
+}
+
+function extractChatId(update) {
+  if (update.callback_query?.message?.chat?.id)
+    return update.callback_query.message.chat.id;
+  if (update.message?.chat?.id) return update.message.chat.id;
+  if (update.edited_message?.chat?.id) return update.edited_message.chat.id;
+  return null;
+}
+
+// -----------------------------------------------------------------------------
 // Base64 helpers — KV stores strings, font bytes are binary.
 // -----------------------------------------------------------------------------
 
@@ -410,7 +515,13 @@ async function handleZipDocument(env, chatId, doc) {
 // Update router
 // -----------------------------------------------------------------------------
 
-async function routeUpdate(env, update) {
+//
+// dispatchUpdate() is the ORIGINAL router — command dispatch, callback
+// dispatch, document handling — unchanged. The channel-follow gate below
+// (routeUpdate) wraps it in one place instead of being duplicated inside
+// every individual handler.
+//
+async function dispatchUpdate(env, update) {
   // Callback queries (inline button taps).
   if (update.callback_query) {
     const cb = update.callback_query;
@@ -456,6 +567,53 @@ async function routeUpdate(env, update) {
     chatId,
     "🤖 I only understand ZIP file uploads and commands (/start, /done, /cancel). Send /help for details."
   );
+}
+
+// -----------------------------------------------------------------------------
+// Gated router — channel-follow check runs BEFORE dispatchUpdate.
+// -----------------------------------------------------------------------------
+//
+// This is the new top-level entry the fetch handler calls. It:
+//   1. Extracts the acting user_id / chat_id from any update shape.
+//   2. Special-cases the `check_membership` callback so tapping
+//      "I've Joined" always re-runs the check and either shows /start
+//      (on success) or re-shows the gate (on failure).
+//   3. For everything else, verifies membership (KV-cached, 1h TTL) and
+//      either forwards to dispatchUpdate() or replies with the gate.
+//
+async function routeUpdate(env, update) {
+  const userId = extractUserId(update);
+  const chatId = extractChatId(update);
+  if (!userId || !chatId) return; // no acting user — drop silently
+
+  // "I've Joined — Check Again" callback — always re-run the check,
+  // never fall through to dispatchUpdate() for this one.
+  if (update.callback_query?.data === "check_membership") {
+    await answerCallback(env, update.callback_query.id, "");
+    const nowMember = await checkMembership(env, userId);
+    if (nowMember) {
+      // Show the normal welcome screen.
+      return handleStart(env, chatId);
+    }
+    return sendGateMessage(env, chatId);
+  }
+
+  const isMember = await checkMembership(env, userId);
+  if (!isMember) {
+    // Clear the Telegram spinner on callback taps even though we're
+    // blocking the underlying action.
+    if (update.callback_query?.id) {
+      await answerCallback(
+        env,
+        update.callback_query.id,
+        "🔒 Join @motionsalt first"
+      );
+    }
+    return sendGateMessage(env, chatId);
+  }
+
+  // Gate cleared — hand off to the ORIGINAL router.
+  return dispatchUpdate(env, update);
 }
 
 // -----------------------------------------------------------------------------
